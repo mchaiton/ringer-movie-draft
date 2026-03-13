@@ -1,3 +1,7 @@
 {
-  "outputDirectory": "frontend/dist"
+  "outputDirectory": "frontend/dist",
+  "env": {
+    "VITE_API_URL": "https://ringer-movie-draft-production.up.railway.app",
+    "VITE_WS_URL":  "https://ringer-movie-draft-production.up.railway.app"
+  }
 }
