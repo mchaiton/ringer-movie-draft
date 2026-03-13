@@ -123,7 +123,7 @@ function AuthScreen({ onAuth }) {
       const res = await leagueApi.create({ name:leagueName.trim(), seasonYear:new Date().getFullYear(), commissionerName:playerName.trim(), budgetPerPlayer:budget, minRoster, maxRoster:10 });
       auth.setToken(res.authToken);
       auth.setLeague({ id:res.leagueId, name:leagueName.trim() });
-      auth.setPlayer({ id:res.leagueId, name:playerName.trim(), is_commissioner:true });
+      auth.setPlayer({ id:res.commissionerId, name:playerName.trim(), is_commissioner:true });
       onAuth();
     } catch(e) { setError(e.message); } finally { setLoading(false); }
   };
@@ -504,7 +504,7 @@ function RosterPage({ leagueId, you }) {
 
 export default function App() {
   const [page, setPage]         = useState("draft");
-  const [loggedIn, setLoggedIn] = useState(auth.isLoggedIn);
+  const [loggedIn, setLoggedIn] = useState(auth.isLoggedIn());
   const player = auth.getPlayer();
   const league = auth.getLeague();
 

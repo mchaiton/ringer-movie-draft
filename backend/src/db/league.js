@@ -91,7 +91,7 @@ function applyLeagueSchema(db) {
 // ── League queries ────────────────────────────────────────────────────────────
 
 function createLeague(db, { id, name, seasonYear, commissionerId, commissionerName, budgetPerPlayer = 1000, minRoster = 6, maxRoster = 10 }) {
-  const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const inviteCode = require('crypto').randomBytes(3).toString('hex').toUpperCase();
   const token = require('crypto').randomBytes(24).toString('hex');
 
   run(db, `

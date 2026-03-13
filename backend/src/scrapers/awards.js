@@ -81,7 +81,7 @@ async function scrapeWikipediaAward(url, awardName, source, year, points) {
       // Film title is typically the first or second <td> containing an <a> tag
       cells.each((j, cell) => {
         const link = $(cell).find('a').first();
-        if (link.length && !$(cell).find('a[href*="film"]').length === false) {
+        if (link.length && !$(cell).find('a[href*="film"]').length) {
           const title = link.text().trim();
           if (title && title.length > 1 && !title.match(/^\d{4}$/)) {
             results.push({ title, source, award_name: awardName, year, points, source_url: url });

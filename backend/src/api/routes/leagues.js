@@ -57,6 +57,7 @@ router.post('/', (req, res) => {
 
     res.status(201).json({
       leagueId,
+      commissionerId,
       inviteCode,
       authToken,
       message: `League "${name}" created. Share invite code: ${inviteCode}`,
