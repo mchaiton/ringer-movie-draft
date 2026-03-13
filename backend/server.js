@@ -34,20 +34,23 @@ const draftRoutes  = require('./src/api/routes/draft');
 
 const PORT = process.env.PORT || 3001;
 const SEASON_YEAR = parseInt(process.env.SEASON_YEAR || new Date().getFullYear());
+const CORS_ORIGIN = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
+  : ['https://ringer-movie-draft-fc7ybo8ve-mchaitons-projects.vercel.app', 'http://localhost:5173'];
 
 // ── App setup ─────────────────────────────────────────────────────────────────
 
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'] },
   pingTimeout: 60000,
 });
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
+app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 
 // Rate limiting — generous for a private league tool
