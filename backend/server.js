@@ -36,7 +36,7 @@ const PORT = process.env.PORT || 3001;
 const SEASON_YEAR = parseInt(process.env.SEASON_YEAR || new Date().getFullYear());
 const CORS_ORIGIN = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
-  : ['https://ringer-movie-draft-fc7ybo8ve-mchaitons-projects.vercel.app', 'http://localhost:5173'];
+  : ['https://ringer-movie-draft.vercel.app', 'http://localhost:5173'];
 
 // ── App setup ─────────────────────────────────────────────────────────────────
 
