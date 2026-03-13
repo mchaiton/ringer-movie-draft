@@ -20,7 +20,7 @@ const fs    = require('fs');
 const path  = require('path');
 
 const CACHE_PATH = path.resolve('./data/oscar_nominations.json');
-const DATASET_URL = 'https://raw.githubusercontent.com/delventhalz/json-nominations/main/nominations.json';
+const DATASET_URL = 'https://raw.githubusercontent.com/delventhalz/json-nominations/main/oscar-nominations.json';
 
 /**
  * Load the nominations dataset.
