@@ -215,7 +215,7 @@ function DraftRoom({ leagueId, you }) {
   const [creating, setCreating]     = useState(false);
   const bidListRef = useRef(null);
 
-  const { connected, draftState, secondsLeft, error, actions } = useDraftSocket(sessionId);
+  const { connected, draftState, secondsLeft, error, clearError, actions } = useDraftSocket(sessionId);
 
   useEffect(()=>{ if(bidListRef.current) bidListRef.current.scrollTop=bidListRef.current.scrollHeight; },[draftState?.bids?.length]);
 
@@ -241,7 +241,7 @@ function DraftRoom({ leagueId, you }) {
 
   return (
     <div style={{ display:"grid", gridTemplateColumns:"1fr 360px 280px", gap:16, padding:"88px 24px 24px", minHeight:"100vh", maxWidth:1400, margin:"0 auto" }}>
-      <ErrorBanner message={error} onDismiss={()=>{}} />
+      <ErrorBanner message={error} onDismiss={clearError} />
 
       {/* CENTER */}
       <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
@@ -306,7 +306,7 @@ function DraftRoom({ leagueId, you }) {
           <div style={{ display:"flex", gap:10 }}>
             <div style={{ position:"relative", flex:1 }}>
               <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontFamily:"var(--font-mono)", fontSize:18, color:"var(--muted)", fontWeight:700 }}>$</span>
-              <input type="number" value={bidInput} onChange={e=>setBidInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleBid()} placeholder={(topBid?.amount??0)+1} min={(topBid?.amount??0)+1} max={myMaxBid}
+              <input type="number" value={bidInput} onChange={e=>setBidInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleBid()} placeholder={(topBid?.amount??0)+1} min={(topBid?.amount??0)+1}
                 style={{ width:"100%", height:52, background:"var(--near-black)", border:"1px solid var(--mid-grey)", borderRadius:2, color:"var(--white)", fontFamily:"var(--font-mono)", fontSize:20, fontWeight:700, padding:"0 16px 0 32px", outline:"none" }} />
             </div>
             <button onClick={handleBid} style={{ background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, letterSpacing:"0.12em", padding:"0 28px", height:52 }}>PLACE BID</button>

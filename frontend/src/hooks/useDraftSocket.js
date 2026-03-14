@@ -78,8 +78,8 @@ export function useDraftSocket(sessionId) {
 
     socket.on('draft:error', ({ message }) => {
       setError(message);
-      // Auto-clear after 4s
-      setTimeout(() => setError(null), 4000);
+      // Auto-clear after 8s
+      setTimeout(() => setError(null), 8000);
     });
 
     socket.on('queue:updated', ({ queue }) => {
@@ -120,6 +120,7 @@ export function useDraftSocket(sessionId) {
     draftState,
     secondsLeft,
     error,
+    clearError: () => setError(null),
     actions: { startDraft, placeBid, nominate, pass },
   };
 }
