@@ -74,7 +74,7 @@ const ErrorBanner = ({ message, onDismiss }) => !message ? null : (
   </div>
 );
 
-const Nav = ({ page, setPage, playerName, leagueName }) => (
+const Nav = ({ page, setPage, playerName, leagueName, onSignOut }) => (
   <nav style={{ position:"fixed", top:0, left:0, right:0, zIndex:100, background:"rgba(10,9,6,0.95)", backdropFilter:"blur(12px)", borderBottom:"1px solid var(--warm-grey)", display:"flex", alignItems:"center", padding:"0 24px", height:56 }}>
     <div style={{ marginRight:"auto", display:"flex", alignItems:"baseline", gap:8 }}>
       <span style={{ fontFamily:"var(--font-display)", fontSize:18, fontWeight:900, color:"var(--amber)", letterSpacing:"-0.02em" }}>RINGER</span>
@@ -86,6 +86,7 @@ const Nav = ({ page, setPage, playerName, leagueName }) => (
     <div style={{ marginLeft:"auto", display:"flex", gap:12, alignItems:"center" }}>
       {playerName && <Mono size={10} color="var(--light)">{playerName}</Mono>}
       {leagueName && <div style={{ fontFamily:"var(--font-mono)", fontSize:10, color:"var(--muted)", border:"1px solid var(--warm-grey)", padding:"4px 10px", borderRadius:2 }}>{leagueName}</div>}
+      <button onClick={onSignOut} style={{ background:"none", border:"1px solid var(--warm-grey)", borderRadius:2, color:"var(--muted)", fontFamily:"var(--font-mono)", fontSize:9, fontWeight:700, letterSpacing:"0.12em", padding:"4px 10px", cursor:"pointer", transition:"all 0.2s" }} onMouseEnter={e=>e.target.style.color="var(--light)"} onMouseLeave={e=>e.target.style.color="var(--muted)"}>SIGN OUT</button>
     </div>
   </nav>
 );
@@ -508,12 +509,14 @@ export default function App() {
   const player = auth.getPlayer();
   const league = auth.getLeague();
 
+  const handleSignOut = () => { auth.clear(); setLoggedIn(false); };
+
   if(!loggedIn) return (<><style dangerouslySetInnerHTML={{__html:CSS}} /><AuthScreen onAuth={()=>setLoggedIn(true)} /></>);
 
   return (
     <>
       <style dangerouslySetInnerHTML={{__html:CSS}} />
-      <Nav page={page} setPage={setPage} playerName={player?.name} leagueName={league?.name} />
+      <Nav page={page} setPage={setPage} playerName={player?.name} leagueName={league?.name} onSignOut={handleSignOut} />
       {page==="draft"     && <DraftRoom  leagueId={league?.id} you={player} />}
       {page==="dashboard" && <Dashboard  leagueId={league?.id} you={player} />}
       {page==="roster"    && <RosterPage leagueId={league?.id} you={player} />}
