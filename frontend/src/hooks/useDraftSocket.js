@@ -20,10 +20,11 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
 
 export function useDraftSocket(sessionId) {
   const socketRef = useRef(null);
-  const [connected, setConnected]   = useState(false);
-  const [draftState, setDraftState] = useState(null);
-  const [error, setError]           = useState(null);
+  const [connected, setConnected]     = useState(false);
+  const [draftState, setDraftState]   = useState(null);
+  const [error, setError]             = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(30);
+  const [chatMessages, setChatMessages] = useState([]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -90,6 +91,16 @@ export function useDraftSocket(sessionId) {
       // Trigger a re-fetch of league data from parent
     });
 
+    // ── Chat events ───────────────────────────────────────────────────────
+
+    socket.on('chat:history', (messages) => {
+      setChatMessages(messages);
+    });
+
+    socket.on('chat:message', (msg) => {
+      setChatMessages(prev => [...prev, msg]);
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -115,12 +126,21 @@ export function useDraftSocket(sessionId) {
     socketRef.current?.emit('draft:pass');
   }, []);
 
+  const sendChatMessage = useCallback((message) => {
+    socketRef.current?.emit('chat:send', { message });
+  }, []);
+
+  const shuffleNominationOrder = useCallback(() => {
+    socketRef.current?.emit('draft:shuffle', {});
+  }, []);
+
   return {
     connected,
     draftState,
     secondsLeft,
+    chatMessages,
     error,
     clearError: () => setError(null),
-    actions: { startDraft, placeBid, nominate, pass },
+    actions: { startDraft, placeBid, nominate, pass, sendChatMessage, shuffleNominationOrder },
   };
 }

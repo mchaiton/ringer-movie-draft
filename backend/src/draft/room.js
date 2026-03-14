@@ -4,14 +4,28 @@
  */
 
 const { getPlayerByToken, getLeague, getPlayers, getEffectiveMaxBid,
-        canAffordBid, getNominationQueue, getLeagueStandings } = require('../db/league');
+        canAffordBid, getNominationQueue, getLeagueStandings,
+        saveChatMessage, getChatHistory, persistNominationState } = require('../db/league');
 const { query, run, save } = require('../db/schema');
 const tmdb = require('../clients/tmdb');
 
 const BID_WINDOW_SECONDS = 30;
 const activeSessions = new Map();
 
-async function buildState(db, leagueId, sessionId, phase, currentMovie = null, bids = [], recentSales = []) {
+// ── Snake draft helper ────────────────────────────────────────────────────────
+
+function getSnakeNominator(nominationOrder, turn) {
+  const n = nominationOrder.length;
+  if (n === 0) return null;
+  const round = Math.floor(turn / n);
+  const pos   = turn % n;
+  const idx   = round % 2 === 0 ? pos : (n - 1 - pos);
+  return nominationOrder[idx];
+}
+
+// ── State builder ─────────────────────────────────────────────────────────────
+
+async function buildState(db, leagueId, sessionId, phase, currentMovie = null, bids = [], recentSales = [], nominationOrder = [], nominationTurn = 0) {
   const [players, queue, standings] = await Promise.all([
     getPlayers(db, leagueId),
     getNominationQueue(db, leagueId),
@@ -36,6 +50,7 @@ async function buildState(db, leagueId, sessionId, phase, currentMovie = null, b
     bids, topBid, secondsLeft: BID_WINDOW_SECONDS,
     queue: queue.slice(0, 10),
     players: enrichedPlayers, recentSales,
+    nominationOrder, nominationTurn,
   };
 }
 
@@ -72,6 +87,8 @@ function registerDraftHandlers(io, db) {
     let currentPlayer   = null;
     let currentLeagueId = null;
 
+    // ── Join ─────────────────────────────────────────────────────────────────
+
     socket.on('draft:join', async ({ token }) => {
       try {
         const player = await getPlayerByToken(db, token);
@@ -87,8 +104,13 @@ function registerDraftHandlers(io, db) {
           const idleState = await buildState(db, currentLeagueId, null, 'idle');
           socket.emit('draft:state', idleState);
         }
+        // Send chat history to joining player
+        const history = await getChatHistory(db, currentLeagueId, 50);
+        socket.emit('chat:history', history.reverse()); // reverse DESC→ASC
       } catch (err) { console.error('[draft] join error:', err); }
     });
+
+    // ── Start draft ──────────────────────────────────────────────────────────
 
     socket.on('draft:start', async ({ sessionId }) => {
       try {
@@ -96,12 +118,36 @@ function registerDraftHandlers(io, db) {
         if (activeSessions.has(currentLeagueId)) { socket.emit('draft:error', { message: 'Draft already in progress.' }); return; }
         await run(db, `UPDATE leagues SET status = 'drafting' WHERE id = ?`, [currentLeagueId]);
         await run(db, `UPDATE draft_sessions SET status = 'active', started_at = datetime('now') WHERE id = ?`, [sessionId]);
-        const state = await buildState(db, currentLeagueId, sessionId, 'nominating');
-        activeSessions.set(currentLeagueId, { sessionId, state, timer: null, recentSales: [] });
+        const state = await buildState(db, currentLeagueId, sessionId, 'nominating', null, [], [], [], 0);
+        activeSessions.set(currentLeagueId, { sessionId, state, timer: null, recentSales: [], nominationOrder: [], nominationTurn: 0 });
         io.to(currentLeagueId).emit('draft:state', state);
         console.log(`[draft] Draft started for league ${currentLeagueId}`);
       } catch (err) { console.error('[draft] start error:', err); }
     });
+
+    // ── Shuffle nomination order ──────────────────────────────────────────────
+
+    socket.on('draft:shuffle', async () => {
+      try {
+        if (!currentPlayer?.is_commissioner) { socket.emit('draft:error', { message: 'Only the commissioner can shuffle.' }); return; }
+        const session = activeSessions.get(currentLeagueId);
+        if (!session || session.state.phase !== 'nominating') { socket.emit('draft:error', { message: 'Can only shuffle during nomination phase.' }); return; }
+        // Fisher-Yates shuffle
+        const order = session.state.players.map(p => p.id);
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        session.nominationOrder = order;
+        session.nominationTurn  = 0;
+        await persistNominationState(db, session.sessionId, order, 0);
+        session.state = await buildState(db, currentLeagueId, session.sessionId, 'nominating', null, [], session.recentSales, order, 0);
+        io.to(currentLeagueId).emit('draft:state', session.state);
+        console.log(`[draft] Nomination order shuffled for ${currentLeagueId}: ${order}`);
+      } catch (err) { console.error('[draft] shuffle error:', err); }
+    });
+
+    // ── Nominate ─────────────────────────────────────────────────────────────
 
     socket.on('draft:nominate', async ({ movieId }) => {
       try {
@@ -109,17 +155,28 @@ function registerDraftHandlers(io, db) {
         const session = activeSessions.get(currentLeagueId);
         if (!session) { socket.emit('draft:error', { message: 'No active draft session.' }); return; }
         if (session.state.phase !== 'nominating') { socket.emit('draft:error', { message: 'Not in nomination phase.' }); return; }
+        // Snake draft turn enforcement
+        if (session.nominationOrder.length > 0) {
+          const expectedId = getSnakeNominator(session.nominationOrder, session.nominationTurn);
+          if (expectedId !== currentPlayer.id) {
+            const expected = session.state.players.find(p => p.id === expectedId);
+            socket.emit('draft:error', { message: `It's not your turn. Waiting for ${expected?.name || 'another player'}.` });
+            return;
+          }
+        }
         const movies = await query(db, `SELECT * FROM movies WHERE id = ? AND in_draft_pool = 1 AND owned_by IS NULL`, [movieId]);
         if (!movies.length) { socket.emit('draft:error', { message: 'Movie not available.' }); return; }
         const movie = movies[0];
         await run(db, `UPDATE nomination_queue SET status = 'active' WHERE league_id = ? AND movie_id = ? AND status = 'queued'`, [currentLeagueId, movieId]);
-        session.state = await buildState(db, currentLeagueId, session.sessionId, 'bidding', movie, [], session.recentSales);
+        session.state = await buildState(db, currentLeagueId, session.sessionId, 'bidding', movie, [], session.recentSales, session.nominationOrder, session.nominationTurn);
         session.state.secondsLeft = BID_WINDOW_SECONDS;
         startBidTimer(io, db, currentLeagueId, session, movie);
         io.to(currentLeagueId).emit('draft:state', session.state);
         console.log(`[draft] "${movie.title}" nominated by ${currentPlayer.name}`);
       } catch (err) { console.error('[draft] nominate error:', err); }
     });
+
+    // ── Bid ──────────────────────────────────────────────────────────────────
 
     socket.on('draft:bid', async ({ amount }) => {
       try {
@@ -147,6 +204,8 @@ function registerDraftHandlers(io, db) {
       } catch (err) { console.error('[draft] bid error:', err); }
     });
 
+    // ── Pass ─────────────────────────────────────────────────────────────────
+
     socket.on('draft:pass', async () => {
       try {
         if (!currentPlayer?.is_commissioner) { socket.emit('draft:error', { message: 'Only the commissioner can pass.' }); return; }
@@ -161,11 +220,37 @@ function registerDraftHandlers(io, db) {
       } catch (err) { console.error('[draft] pass error:', err); }
     });
 
+    // ── Chat ─────────────────────────────────────────────────────────────────
+
+    socket.on('chat:send', async ({ message }) => {
+      try {
+        if (!currentPlayer) return;
+        const trimmed = (message || '').trim().slice(0, 200);
+        if (!trimmed) return;
+        const id = await saveChatMessage(db, {
+          leagueId: currentLeagueId,
+          playerId: currentPlayer.id,
+          playerName: currentPlayer.name,
+          message: trimmed,
+        });
+        const chatMsg = {
+          id,
+          playerId: currentPlayer.id,
+          playerName: currentPlayer.name,
+          message: trimmed,
+          sentAt: new Date().toISOString(),
+        };
+        io.to(currentLeagueId).emit('chat:message', chatMsg);
+      } catch (err) { console.error('[chat] send error:', err); }
+    });
+
     socket.on('disconnect', () => {
       if (currentPlayer) console.log(`[draft] ${currentPlayer.name} disconnected from ${currentLeagueId}`);
     });
   });
 }
+
+// ── Timer helpers ─────────────────────────────────────────────────────────────
 
 function startBidTimer(io, db, leagueId, session, movie) {
   clearBidTimer(session);
@@ -192,6 +277,8 @@ function clearBidTimer(session) {
   if (session.timer) { clearInterval(session.timer); session.timer = null; }
 }
 
+// ── Auction logic ─────────────────────────────────────────────────────────────
+
 async function handleAuctionEnd(io, db, leagueId, session, movie) {
   const { topBid } = session.state;
   if (!topBid) {
@@ -210,13 +297,19 @@ async function handleAuctionEnd(io, db, leagueId, session, movie) {
 }
 
 async function advanceToNextNomination(io, db, leagueId, session) {
+  // Advance snake draft turn
+  session.nominationTurn += 1;
+  if (session.nominationOrder.length > 0) {
+    await persistNominationState(db, session.sessionId, session.nominationOrder, session.nominationTurn);
+  }
+
   const queue = await getNominationQueue(db, leagueId);
   if (queue.length > 0) {
     const next   = queue[0];
     const movies = await query(db, `SELECT * FROM movies WHERE id = ?`, [next.movie_id]);
     if (movies.length && !movies[0].owned_by) {
       await run(db, `UPDATE nomination_queue SET status = 'active' WHERE id = ?`, [next.id]);
-      session.state = await buildState(db, leagueId, session.sessionId, 'bidding', movies[0], [], session.recentSales);
+      session.state = await buildState(db, leagueId, session.sessionId, 'bidding', movies[0], [], session.recentSales, session.nominationOrder, session.nominationTurn);
       session.state.secondsLeft = BID_WINDOW_SECONDS;
       startBidTimer(io, db, leagueId, session, movies[0]);
       io.to(leagueId).emit('draft:state', session.state);
@@ -224,7 +317,7 @@ async function advanceToNextNomination(io, db, leagueId, session) {
       return;
     }
   }
-  session.state = await buildState(db, leagueId, session.sessionId, 'nominating', null, [], session.recentSales);
+  session.state = await buildState(db, leagueId, session.sessionId, 'nominating', null, [], session.recentSales, session.nominationOrder, session.nominationTurn);
   io.to(leagueId).emit('draft:state', session.state);
 }
 

@@ -83,6 +83,10 @@ export const leagueApi = {
   nominate: (leagueId, movieId) =>
     post(`/api/leagues/${leagueId}/nominate`, { movieId }),
 
+  /** Sign in with exact name + invite code. Returns { leagueId, leagueName, playerId, authToken, isCommissioner } */
+  signIn: (inviteCode, playerName) =>
+    post('/api/leagues/signin', { inviteCode, playerName }, false),
+
   /** Nomination queue */
   queue: (leagueId) => get(`/api/leagues/${leagueId}/queue`),
 

@@ -63,7 +63,20 @@ async function applyLeagueSchema(db) {
       )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_bids_session ON bids(session_id)`,            args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_bids_movie   ON bids(session_id, movie_id)`,  args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS chat_messages (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        league_id   TEXT    NOT NULL REFERENCES leagues(id),
+        player_id   TEXT    NOT NULL REFERENCES players(id),
+        player_name TEXT    NOT NULL,
+        message     TEXT    NOT NULL,
+        sent_at     TEXT    DEFAULT (datetime('now'))
+      )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_chat_league ON chat_messages(league_id, sent_at)`, args: [] },
   ], 'write');
+
+  // Migrations for existing tables (idempotent — ignore if column already exists)
+  try { await run(db, 'ALTER TABLE draft_sessions ADD COLUMN nomination_order TEXT'); } catch(e) {}
+  try { await run(db, 'ALTER TABLE draft_sessions ADD COLUMN nomination_turn INTEGER DEFAULT 0'); } catch(e) {}
 }
 
 async function createLeague(db, { id, name, seasonYear, commissionerId, commissionerName, budgetPerPlayer = 1000, minRoster = 6, maxRoster = 10 }) {
@@ -207,6 +220,52 @@ async function getRecentScoringFeed(db, leagueId, limit = 20) {
   `, [leagueId, limit]);
 }
 
+// ── Feature: sign-in ─────────────────────────────────────────────────────────
+
+async function signIn(db, { inviteCode, playerName }) {
+  const league = await getLeagueByInvite(db, inviteCode);
+  if (!league) throw new Error('League not found.');
+  const rows = await query(db,
+    `SELECT * FROM players WHERE league_id = ? AND LOWER(name) = LOWER(?)`,
+    [league.id, playerName.trim()]
+  );
+  if (!rows.length) throw new Error('Player not found in that league.');
+  if (rows.length > 1) throw new Error('Multiple players with that name — contact your commissioner.');
+  const p = rows[0];
+  return {
+    leagueId: league.id, leagueName: league.name,
+    playerId: p.id, authToken: p.auth_token,
+    isCommissioner: !!p.is_commissioner,
+  };
+}
+
+// ── Feature: chat ─────────────────────────────────────────────────────────────
+
+async function saveChatMessage(db, { leagueId, playerId, playerName, message }) {
+  const result = await db.execute({
+    sql: `INSERT INTO chat_messages (league_id, player_id, player_name, message) VALUES (?, ?, ?, ?)`,
+    args: [leagueId, playerId, playerName, message],
+  });
+  return Number(result.lastInsertRowid);
+}
+
+async function getChatHistory(db, leagueId, limit = 50) {
+  return query(db,
+    `SELECT id, player_id, player_name, message, sent_at
+     FROM chat_messages WHERE league_id = ? ORDER BY sent_at DESC LIMIT ?`,
+    [leagueId, limit]
+  );
+}
+
+// ── Feature: nomination order ─────────────────────────────────────────────────
+
+async function persistNominationState(db, sessionId, nominationOrder, nominationTurn) {
+  await run(db,
+    `UPDATE draft_sessions SET nomination_order = ?, nomination_turn = ? WHERE id = ?`,
+    [JSON.stringify(nominationOrder), nominationTurn, sessionId]
+  );
+}
+
 module.exports = {
   applyLeagueSchema,
   createLeague,
@@ -222,4 +281,8 @@ module.exports = {
   nominateMovie,
   getNominationQueue,
   getRecentScoringFeed,
+  signIn,
+  saveChatMessage,
+  getChatHistory,
+  persistNominationState,
 };

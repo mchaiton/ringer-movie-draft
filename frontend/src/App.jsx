@@ -28,6 +28,7 @@ const CSS = `
   @keyframes pulse-amber { 0%,100%{opacity:1} 50%{opacity:0.5} }
   @keyframes slide-in-right { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
   @keyframes spin { to{transform:rotate(360deg)} }
+  @keyframes name-cycle { 0%,100%{opacity:1;transform:translateY(0)} 50%{opacity:0.4;transform:translateY(-6px)} }
   .fade-up { animation:fadeUp 0.4s ease both; }
 `;
 
@@ -67,6 +68,15 @@ const ScorePill = ({ points, category }) => {
 
 const Spinner = () => <div style={{ width:24, height:24, border:"2px solid var(--warm-grey)", borderTopColor:"var(--amber)", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />;
 
+function getSnakeNominator(nominationOrder, turn) {
+  const n = nominationOrder.length;
+  if (n === 0) return null;
+  const round = Math.floor(turn / n);
+  const pos   = turn % n;
+  const idx   = round % 2 === 0 ? pos : (n - 1 - pos);
+  return nominationOrder[idx];
+}
+
 const ErrorBanner = ({ message, onDismiss }) => !message ? null : (
   <div style={{ position:"fixed", top:72, left:"50%", transform:"translateX(-50%)", zIndex:200, background:"#3a0e0e", border:"1px solid var(--red)", borderRadius:2, padding:"10px 20px", display:"flex", gap:12, alignItems:"center" }}>
     <Mono size={12} color="#e06060">⚠ {message}</Mono>
@@ -97,6 +107,8 @@ function AuthScreen({ onAuth }) {
   const [mode, setMode]           = useState("join");
   const [inviteCode, setInviteCode] = useState("");
   const [playerName, setPlayerName] = useState("");
+  const [signinCode, setSigninCode] = useState("");
+  const [signinName, setSigninName] = useState("");
   const [leagueName, setLeagueName] = useState("");
   const [budget, setBudget]       = useState(1000);
   const [minRoster, setMinRoster] = useState(6);
@@ -131,6 +143,18 @@ function AuthScreen({ onAuth }) {
     } catch(e) { setError(e.message); } finally { setLoading(false); }
   };
 
+  const handleSignIn = async () => {
+    if (!signinCode.trim()||!signinName.trim()) { setError("Both fields required."); return; }
+    setLoading(true); setError(null);
+    try {
+      const res = await leagueApi.signIn(signinCode.trim().toUpperCase(), signinName.trim());
+      auth.setToken(res.authToken);
+      auth.setLeague({ id:res.leagueId, name:res.leagueName });
+      auth.setPlayer({ id:res.playerId, name:signinName.trim(), is_commissioner:res.isCommissioner });
+      onAuth();
+    } catch(e) { setError(e.message); } finally { setLoading(false); }
+  };
+
   if (createdCode) return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
       <div style={{ width:"100%", maxWidth:400, textAlign:"center" }}>
@@ -160,9 +184,9 @@ function AuthScreen({ onAuth }) {
           <Mono size={10} color="var(--muted)" spacing="0.3em">FILM DRAFT LEAGUE</Mono>
         </div>
         <div style={{ display:"flex", border:"1px solid var(--warm-grey)", borderRadius:2, marginBottom:28, overflow:"hidden" }}>
-          {["join","create"].map(m => (
-            <button key={m} onClick={()=>setMode(m)} style={{ flex:1, padding:"10px 0", background:mode===m?"var(--amber)":"transparent", color:mode===m?"var(--black)":"var(--muted)", border:"none", fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, letterSpacing:"0.12em" }}>
-              {m==="join"?"JOIN LEAGUE":"CREATE LEAGUE"}
+          {[["join","JOIN LEAGUE"],["signin","SIGN IN"],["create","CREATE LEAGUE"]].map(([m,label]) => (
+            <button key={m} onClick={()=>setMode(m)} style={{ flex:1, padding:"10px 0", background:mode===m?"var(--amber)":"transparent", color:mode===m?"var(--black)":"var(--muted)", border:"none", fontFamily:"var(--font-mono)", fontSize:9, fontWeight:700, letterSpacing:"0.1em" }}>
+              {label}
             </button>
           ))}
         </div>
@@ -182,6 +206,20 @@ function AuthScreen({ onAuth }) {
                 {loading?<Spinner />:"JOIN LEAGUE →"}
               </button>
             </>
+          ) : mode==="signin" ? (
+            <>
+              <div style={{ marginBottom:16 }}>
+                <Label>INVITE CODE</Label>
+                <input value={signinCode} onChange={e=>setSigninCode(e.target.value.toUpperCase())} placeholder="ABC123" maxLength={6} style={{...inp,letterSpacing:"0.3em",fontSize:20,textAlign:"center"}} />
+              </div>
+              <div style={{ marginBottom:20 }}>
+                <Label>YOUR NAME (EXACT)</Label>
+                <input value={signinName} onChange={e=>setSigninName(e.target.value)} placeholder="The name you joined with" style={inp} />
+              </div>
+              <button onClick={handleSignIn} disabled={loading} style={{ width:"100%", background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, padding:"14px 0", fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, letterSpacing:"0.12em", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                {loading?<Spinner />:"SIGN IN →"}
+              </button>
+            </>
           ) : (
             <>
               <div style={{ marginBottom:14 }}><Label>LEAGUE NAME</Label><input value={leagueName} onChange={e=>setLeagueName(e.target.value)} placeholder="e.g. The Ringer Film Draft" style={inp} /></div>
@@ -197,10 +235,129 @@ function AuthScreen({ onAuth }) {
           )}
         </GrainCard>
         <div style={{ textAlign:"center", marginTop:20 }}>
-          <Mono size={9} color="var(--mid-grey)">Your auth token is stored locally. Don't clear your browser data.</Mono>
+          <Mono size={9} color="var(--mid-grey)">Returning player? Use SIGN IN with your invite code + name.</Mono>
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── CHAT PANEL ───────────────────────────────────────────────────────────────
+
+function ChatPanel({ messages, onSend, playerName }) {
+  const [input, setInput] = useState("");
+  const endRef = useRef(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:'smooth' }); }, [messages.length]);
+  const send = () => { const t = input.trim(); if (!t) return; onSend(t); setInput(""); };
+  return (
+    <GrainCard style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, overflow:"hidden" }}>
+      <div style={{ flex:1, overflowY:"auto", padding:12, display:"flex", flexDirection:"column", gap:4 }}>
+        {messages.length===0 && <Mono size={10} color="var(--mid-grey)" style={{padding:"20px 0",textAlign:"center"}}>No messages yet</Mono>}
+        {messages.map((m,i) => (
+          <div key={m.id ?? i} style={{ padding:"6px 8px", borderRadius:2, background:m.playerName===playerName?"rgba(212,131,26,0.08)":"transparent" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:2 }}>
+              <Mono size={10} color={m.playerName===playerName?"var(--amber-bright)":"var(--light)"} style={{fontWeight:700}}>{m.playerName}</Mono>
+              <Mono size={8} color="var(--mid-grey)">{new Date(m.sentAt||m.sent_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</Mono>
+            </div>
+            <div style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--cream)", lineHeight:1.45, wordBreak:"break-word" }}>{m.message}</div>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+      <div style={{ borderTop:"1px solid var(--warm-grey)", padding:"10px 12px", display:"flex", gap:8, flexShrink:0 }}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} maxLength={200} placeholder="Say something…" style={{ flex:1, background:"var(--near-black)", border:"1px solid var(--mid-grey)", borderRadius:2, color:"var(--white)", fontFamily:"var(--font-mono)", fontSize:12, padding:"8px 12px", outline:"none" }} />
+        <button onClick={send} style={{ background:"transparent", color:"var(--amber)", border:"1px solid var(--amber-dim)", borderRadius:2, fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, letterSpacing:"0.12em", padding:"0 14px", flexShrink:0 }}>SEND</button>
+      </div>
+    </GrainCard>
+  );
+}
+
+// ─── PLAYER BUDGETS (compact) ─────────────────────────────────────────────────
+
+function PlayerBudgetsMini({ players, you }) {
+  if (!players.length) return null;
+  return (
+    <div>
+      <Label>PLAYER BUDGETS</Label>
+      <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:8 }}>
+        {players.map(p => (
+          <GrainCard key={p.id} style={{ padding:"10px 14px", borderColor:p.id===you?.id?"var(--amber-dim)":"var(--warm-grey)", background:p.id===you?.id?"rgba(212,131,26,0.06)":"var(--charcoal)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+              <div style={{ fontFamily:"var(--font-body)", fontSize:13, color:p.id===you?.id?"var(--amber-bright)":"var(--cream)", fontStyle:"italic" }}>{p.name}{p.id===you?.id?" ★":""}</div>
+              <Mono size={14} color="var(--cream)" style={{fontWeight:700}}>${p.budget_remaining}</Mono>
+            </div>
+            <BudgetBar remaining={p.budget_remaining} />
+            <Mono size={9} color="var(--muted)" style={{marginTop:3}}>max bid: <span style={{color:"var(--light)"}}>${p.effective_max_bid}</span></Mono>
+          </GrainCard>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── NOMINATION ORDER PANEL ───────────────────────────────────────────────────
+
+function NominationOrderPanel({ nominationOrder, nominationTurn, players, you, isCommissioner, onShuffle, onNominate }) {
+  const [spinning, setSpinning] = useState(false);
+  const [spinIdx,  setSpinIdx]  = useState(0);
+
+  const handleShuffle = () => {
+    setSpinning(true);
+    let i = 0;
+    const interval = setInterval(() => {
+      setSpinIdx(Math.floor(Math.random() * Math.max(1, players.length)));
+      if (++i > 30) { clearInterval(interval); setSpinning(false); }
+    }, 80);
+    onShuffle();
+  };
+
+  const currentNominatorId = getSnakeNominator(nominationOrder, nominationTurn);
+  const isMyTurn = currentNominatorId === you?.id;
+
+  if (nominationOrder.length === 0) {
+    return (
+      <GrainCard style={{ padding:"28px 24px", textAlign:"center" }}>
+        {spinning ? (
+          <div style={{ fontFamily:"var(--font-display)", fontSize:32, fontWeight:900, color:"var(--amber)", animation:"name-cycle 0.16s infinite", minHeight:48 }}>
+            {players[spinIdx]?.name || '…'}
+          </div>
+        ) : isCommissioner ? (
+          <>
+            <div style={{ fontFamily:"var(--font-body)", fontSize:15, color:"var(--muted)", marginBottom:20, fontStyle:"italic" }}>Randomize nomination order before the draft begins.</div>
+            <button onClick={handleShuffle} style={{ background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, padding:"12px 28px", fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, letterSpacing:"0.12em" }}>🎲 RANDOMIZE ORDER</button>
+          </>
+        ) : (
+          <Mono size={11} color="var(--muted)">Waiting for commissioner to set nomination order…</Mono>
+        )}
+      </GrainCard>
+    );
+  }
+
+  return (
+    <GrainCard style={{ padding:"16px 20px" }}>
+      <Label>NOMINATION ORDER</Label>
+      <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:10, marginBottom:14 }}>
+        {nominationOrder.map((pid, i) => {
+          const n = nominationOrder.length;
+          const round = Math.floor(nominationTurn / n);
+          const pos = nominationTurn % n;
+          const currentIdx = round % 2 === 0 ? pos : (n - 1 - pos);
+          const isCurrent = i === currentIdx;
+          const player = players.find(p => p.id === pid);
+          return (
+            <div key={pid} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", borderRadius:2, background:isCurrent?"rgba(212,131,26,0.12)":"transparent", border:isCurrent?"1px solid var(--amber-dim)":"1px solid transparent", transition:"all 0.3s" }}>
+              <Mono size={10} color="var(--muted)" style={{width:16,textAlign:"center",fontWeight:700}}>{i+1}</Mono>
+              <div style={{ fontFamily:"var(--font-body)", fontSize:14, color:isCurrent?"var(--amber-bright)":pid===you?.id?"var(--light)":"var(--muted)", fontStyle:"italic", flex:1 }}>{player?.name || pid}</div>
+              {isCurrent && <Mono size={9} color="var(--amber)" spacing="0.15em">▶ UP</Mono>}
+            </div>
+          );
+        })}
+      </div>
+      {isMyTurn
+        ? <button onClick={onNominate} style={{ width:"100%", background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, padding:"10px 0", fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, letterSpacing:"0.12em" }}>YOUR TURN — NOMINATE A FILM</button>
+        : <Mono size={10} color="var(--muted)" style={{display:"block",textAlign:"center",padding:"8px 0"}}>Waiting for {players.find(p=>p.id===currentNominatorId)?.name||'…'} to nominate</Mono>
+      }
+    </GrainCard>
   );
 }
 
@@ -215,7 +372,7 @@ function DraftRoom({ leagueId, you }) {
   const [creating, setCreating]     = useState(false);
   const bidListRef = useRef(null);
 
-  const { connected, draftState, secondsLeft, error, clearError, actions } = useDraftSocket(sessionId);
+  const { connected, draftState, secondsLeft, chatMessages, error, clearError, actions } = useDraftSocket(sessionId);
 
   useEffect(()=>{ if(bidListRef.current) bidListRef.current.scrollTop=bidListRef.current.scrollHeight; },[draftState?.bids?.length]);
 
@@ -227,6 +384,7 @@ function DraftRoom({ leagueId, you }) {
 
   const phase=draftState?.phase, currentMovie=draftState?.currentMovie, bids=draftState?.bids||[], topBid=draftState?.topBid;
   const players=draftState?.players||[], queue=draftState?.queue||[], recentSales=draftState?.recentSales||[];
+  const nominationOrder=draftState?.nominationOrder||[], nominationTurn=draftState?.nominationTurn??0;
   const myPlayer=players.find(p=>p.id===you?.id), myMaxBid=myPlayer?.effective_max_bid??0;
   const timerColor=secondsLeft>15?"var(--amber)":secondsLeft>5?"#c87010":"var(--red)";
 
@@ -240,7 +398,7 @@ function DraftRoom({ leagueId, you }) {
   );
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"1fr 360px 280px", gap:16, padding:"88px 24px 24px", minHeight:"100vh", maxWidth:1400, margin:"0 auto" }}>
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 360px 320px", gap:16, padding:"88px 24px 24px", minHeight:"100vh", maxWidth:1400, margin:"0 auto" }}>
       <ErrorBanner message={error} onDismiss={clearError} />
 
       {/* CENTER */}
@@ -275,10 +433,19 @@ function DraftRoom({ leagueId, you }) {
               </div>
             </div>
           </GrainCard>
+        ) : phase==="nominating" ? (
+          <NominationOrderPanel
+            nominationOrder={nominationOrder}
+            nominationTurn={nominationTurn}
+            players={players}
+            you={you}
+            isCommissioner={!!you?.is_commissioner}
+            onShuffle={actions.shuffleNominationOrder}
+            onNominate={()=>setShowPool(true)}
+          />
         ) : (
           <GrainCard style={{ padding:40, textAlign:"center" }}>
-            {phase==="nominating"?<><div style={{ fontFamily:"var(--font-display)", fontSize:28, color:"var(--muted)", marginBottom:12 }}>Waiting for nomination</div><button onClick={()=>setShowPool(true)} style={{ background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, padding:"12px 28px", fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, letterSpacing:"0.12em" }}>NOMINATE A FILM</button></>
-            :phase==="complete"?<div style={{ fontFamily:"var(--font-display)", fontSize:32, color:"var(--amber)", fontStyle:"italic" }}>Draft complete.</div>
+            {phase==="complete"?<div style={{ fontFamily:"var(--font-display)", fontSize:32, color:"var(--amber)", fontStyle:"italic" }}>Draft complete.</div>
             :<div style={{ fontFamily:"var(--font-display)", fontSize:24, color:"var(--muted)" }}>Waiting to start...</div>}
           </GrainCard>
         )}
@@ -322,6 +489,7 @@ function DraftRoom({ leagueId, you }) {
             {recentSales.slice(0,3).map((sale,i)=><GrainCard key={i} style={{ flex:1, padding:"12px 14px" }}><div style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--cream)", fontStyle:"italic", marginBottom:2 }}>{sale.movie?.title}</div><Mono size={10} color="var(--muted)">{sale.winner}</Mono><div style={{ fontFamily:"var(--font-mono)", fontSize:16, fontWeight:700, color:"var(--amber)", marginTop:4 }}>${sale.amount}</div></GrainCard>)}
           </div>
         </div>}
+        {players.length>0&&<PlayerBudgetsMini players={players} you={you} />}
       </div>
 
       {/* BID HISTORY */}
@@ -342,23 +510,14 @@ function DraftRoom({ leagueId, you }) {
         <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
           {queue.length===0&&<Mono size={10} color="var(--mid-grey)">Queue is empty</Mono>}
           {queue.slice(0,4).map((item,i)=><GrainCard key={item.id} style={{ padding:"10px 14px", display:"flex", alignItems:"center", gap:10, opacity:1-i*0.15 }}><Mono size={10} color="var(--muted)" style={{width:16,textAlign:"center"}}>{i+1}</Mono><div style={{flex:1}}><div style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--cream)", fontStyle:"italic" }}>{item.title}</div><Mono size={9} color="var(--muted)">nom. {item.nominated_by_name}</Mono></div></GrainCard>)}
-          {(phase==="nominating"||phase==="bidding")&&<button onClick={()=>setShowPool(true)} style={{ marginTop:4, background:"transparent", color:"var(--amber)", border:"1px solid var(--amber-dim)", borderRadius:2, padding:"8px 0", fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, letterSpacing:"0.12em" }}>+ NOMINATE</button>}
+          {(phase==="bidding"||(phase==="nominating"&&(nominationOrder.length===0||getSnakeNominator(nominationOrder,nominationTurn)===you?.id)))&&<button onClick={()=>setShowPool(true)} style={{ marginTop:4, background:"transparent", color:"var(--amber)", border:"1px solid var(--amber-dim)", borderRadius:2, padding:"8px 0", fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, letterSpacing:"0.12em" }}>+ NOMINATE</button>}
         </div>
       </div>
 
-      {/* PLAYER BUDGETS */}
-      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-        <Label>PLAYER BUDGETS</Label>
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {players.map(p=><GrainCard key={p.id} style={{ padding:"14px 16px", borderColor:p.id===you?.id?"var(--amber-dim)":"var(--warm-grey)", background:p.id===you?.id?"rgba(212,131,26,0.06)":"var(--charcoal)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-              <div><div style={{ fontFamily:"var(--font-body)", fontSize:14, color:p.id===you?.id?"var(--amber-bright)":"var(--cream)", fontStyle:"italic" }}>{p.name}{p.id===you?.id?" ★":""}</div><Mono size={9} color="var(--muted)">{p.movies_owned} films · {p.total_points} pts</Mono></div>
-              <Mono size={18} color="var(--cream)" style={{fontWeight:700}}>${p.budget_remaining}</Mono>
-            </div>
-            <BudgetBar remaining={p.budget_remaining} />
-            <Mono size={9} color="var(--muted)" style={{marginTop:4}}>max bid: <span style={{color:"var(--light)"}}>${p.effective_max_bid}</span></Mono>
-          </GrainCard>)}
-        </div>
+      {/* CHAT */}
+      <div style={{ display:"flex", flexDirection:"column", gap:12, minHeight:0 }}>
+        <Label>LEAGUE CHAT</Label>
+        <ChatPanel messages={chatMessages} onSend={actions.sendChatMessage} playerName={you?.name} />
       </div>
 
       {/* POOL MODAL */}

@@ -59,6 +59,24 @@ router.post('/join/:inviteCode', async (req, res) => {
   }
 });
 
+// ── Sign in (re-auth by name + invite code) ───────────────────────────────────
+
+router.post('/signin', async (req, res) => {
+  const { inviteCode, playerName } = req.body;
+  if (!inviteCode || !playerName)
+    return res.status(400).json({ error: 'inviteCode and playerName are required.' });
+  const db = req.app.get('db');
+  try {
+    const result = await league.signIn(db, {
+      inviteCode: inviteCode.trim(),
+      playerName: playerName.trim(),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
 // ── Get league (authenticated) ────────────────────────────────────────────────
 
 router.get('/:id', requirePlayer, async (req, res) => {
