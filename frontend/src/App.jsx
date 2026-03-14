@@ -102,6 +102,8 @@ function AuthScreen({ onAuth }) {
   const [minRoster, setMinRoster] = useState(6);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
+  const [createdCode, setCreatedCode] = useState(null);
+  const [copied, setCopied]       = useState(false);
 
   const inp = { width:"100%", background:"var(--near-black)", border:"1px solid var(--mid-grey)", borderRadius:2, color:"var(--white)", fontFamily:"var(--font-mono)", fontSize:14, padding:"12px 14px", outline:"none", marginTop:6 };
 
@@ -125,9 +127,30 @@ function AuthScreen({ onAuth }) {
       auth.setToken(res.authToken);
       auth.setLeague({ id:res.leagueId, name:leagueName.trim() });
       auth.setPlayer({ id:res.commissionerId, name:playerName.trim(), is_commissioner:true });
-      onAuth();
+      setCreatedCode(res.inviteCode);
     } catch(e) { setError(e.message); } finally { setLoading(false); }
   };
+
+  if (createdCode) return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ width:"100%", maxWidth:400, textAlign:"center" }}>
+        <div style={{ fontFamily:"var(--font-display)", fontSize:52, fontWeight:900, color:"var(--amber)", letterSpacing:"-0.02em", lineHeight:1, marginBottom:8 }}>RINGER</div>
+        <Mono size={10} color="var(--muted)" spacing="0.3em">FILM DRAFT LEAGUE</Mono>
+        <GrainCard style={{ padding:32, marginTop:32 }}>
+          <div style={{ fontFamily:"var(--font-display)", fontSize:22, fontWeight:700, color:"var(--white)", marginBottom:8 }}>League Created!</div>
+          <Mono size={11} color="var(--muted)" style={{display:"block",marginBottom:24}}>Share this invite code with your league members</Mono>
+          <div style={{ fontFamily:"var(--font-mono)", fontSize:48, fontWeight:700, color:"var(--amber-bright)", letterSpacing:"0.3em", padding:"20px 0", border:"1px solid var(--amber-dim)", borderRadius:2, background:"var(--near-black)", marginBottom:16 }}>{createdCode}</div>
+          <button onClick={()=>{ navigator.clipboard.writeText(createdCode); setCopied(true); setTimeout(()=>setCopied(false),2000); }}
+            style={{ width:"100%", background:copied?"var(--green)":"var(--warm-grey)", color:"var(--light)", border:"none", borderRadius:2, padding:"12px 0", fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, letterSpacing:"0.12em", marginBottom:12, transition:"background 0.2s" }}>
+            {copied ? "COPIED ✓" : "COPY CODE"}
+          </button>
+          <button onClick={onAuth} style={{ width:"100%", background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, padding:"14px 0", fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, letterSpacing:"0.12em" }}>
+            ENTER DRAFT ROOM →
+          </button>
+        </GrainCard>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
