@@ -1,13 +1,6 @@
 /**
  * api/middleware/auth.js
- * Simple token-based auth. No passwords or JWTs — players receive an auth_token
- * when they join a league (via invite link). They include it in every request.
- *
- * Header: Authorization: Bearer <token>
- *   OR
- * Query:  ?token=<token>
- *
- * Sets req.player and req.league on success.
+ * Token-based auth middleware. Now fully async for Turso compatibility.
  */
 
 const { getPlayerByToken, getLeague } = require('../../db/league');
@@ -22,20 +15,20 @@ async function requirePlayer(req, res, next) {
   }
 
   const db = req.app.get('db');
-  const player = getPlayerByToken(db, token);
+  const player = await getPlayerByToken(db, token);
 
   if (!player) {
     return res.status(401).json({ error: 'Invalid token.' });
   }
 
-  const league = getLeague(db, player.league_id);
+  const league = await getLeague(db, player.league_id);
   req.player = player;
   req.league = league;
   next();
 }
 
-function requireCommissioner(req, res, next) {
-  requirePlayer(req, res, () => {
+async function requireCommissioner(req, res, next) {
+  await requirePlayer(req, res, async () => {
     if (!req.player.is_commissioner) {
       return res.status(403).json({ error: 'Commissioner access required.' });
     }

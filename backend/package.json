@@ -8,6 +8,7 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.0",
     "axios": "^1.6.0",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
@@ -17,7 +18,6 @@
     "helmet": "^7.1.0",
     "node-cron": "^3.0.3",
     "socket.io": "^4.7.2",
-    "sql.js": "^1.10.2",
     "uuid": "^9.0.0"
   }
 }

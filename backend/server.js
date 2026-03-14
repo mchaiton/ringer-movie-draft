@@ -68,8 +68,8 @@ let db;
 
 async function bootstrap() {
   db = await getDb();
-  applyLeagueSchema(db);
-  save(db);
+  await applyLeagueSchema(db);
+  await save(db);
 
   // Make db and io available to route handlers
   app.set('db', db);

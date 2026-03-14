@@ -22,13 +22,13 @@ const scoring  = require('./scoring');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function logSync(db, source, status, error = null, records = 0) {
-  run(db,
+async function logSync(db, source, status, error = null, records = 0) {
+  await run(db,
     `INSERT OR REPLACE INTO sync_log (source, last_synced, last_status, last_error, records_affected)
      VALUES (?, datetime('now'), ?, ?, ?)`,
     [source, status, error, records]
   );
-  save(db);
+  await save(db);
 }
 
 // ── TMDB Pool Sync ───────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ async function syncTmdbPool(db, year) {
         continue;
       }
 
-      run(db, `
+      await run(db, `
         INSERT INTO movies (
           id, title, release_date, season_year, status,
           tmdb_poster_path, tmdb_backdrop_path, tmdb_overview,
@@ -91,7 +91,7 @@ async function syncTmdbPool(db, year) {
     }
 
     // Mark movies whose release date has shifted out of year as date_shifted
-    run(db,
+    await run(db,
       `UPDATE movies SET status = 'date_shifted', updated_at = datetime('now')
        WHERE season_year = ?
          AND status = 'upcoming'
@@ -99,12 +99,12 @@ async function syncTmdbPool(db, year) {
       [year, `${year}-%`]
     );
 
-    logSync(db, 'tmdb_pool', 'success', null, upserted);
+    await logSync(db, 'tmdb_pool', 'success', null, upserted);
     console.log(`[sync:tmdb] Done. ${upserted} movies upserted.`);
     return upserted;
 
   } catch (err) {
-    logSync(db, 'tmdb_pool', 'error', err.message);
+    await logSync(db, 'tmdb_pool', 'error', err.message);
     console.error('[sync:tmdb] Failed:', err.message);
     throw err;
   }
@@ -125,7 +125,7 @@ async function syncOmdb(db, year) {
   const today = new Date().toISOString().slice(0, 10);
 
   // Only fetch movies that have already released
-  const movies = query(db, `
+  const movies = await query(db, `
     SELECT id, title, imdb_id, release_date
     FROM movies
     WHERE season_year = ?
@@ -155,7 +155,7 @@ async function syncOmdb(db, year) {
       continue;
     }
 
-    run(db, `
+    await run(db, `
       UPDATE movies SET
         domestic_gross    = COALESCE(?, domestic_gross),
         metacritic_score  = COALESCE(?, metacritic_score),
@@ -171,12 +171,12 @@ async function syncOmdb(db, year) {
     ]);
 
     // Re-score immediately after updating
-    scoring.scoreMovie(db, movie.id);
+    await scoring.scoreMovie(db, movie.id);
     updated++;
   }
 
-  logSync(db, 'omdb', 'success', null, updated);
-  save(db);
+  await logSync(db, 'omdb', 'success', null, updated);
+  await save(db);
   console.log(`[sync:omdb] Done. ${updated} movies updated.`);
   return updated;
 }
@@ -204,7 +204,7 @@ async function syncOscars(db, ceremonyYear, forceRefresh = false) {
 
     for (const [imdbId, noms] of imdbIndex) {
       // Find matching movie in our DB
-      const movies = query(db,
+      const movies = await query(db,
         `SELECT id FROM movies WHERE imdb_id = ?`, [imdbId]
       );
 
@@ -212,13 +212,13 @@ async function syncOscars(db, ceremonyYear, forceRefresh = false) {
 
       for (const nom of noms) {
         // Upsert oscar_data row
-        const existing = query(db,
+        const existing = await query(db,
           `SELECT id FROM oscar_data WHERE imdb_id = ? AND category = ? AND ceremony_year = ?`,
           [imdbId, nom.category, ceremonyYear]
         );
 
         if (existing.length === 0) {
-          run(db,
+          await run(db,
             `INSERT INTO oscar_data (movie_id, imdb_id, ceremony_year, category, nominees, won)
              VALUES (?, ?, ?, ?, ?, ?)`,
             [movieId, imdbId, ceremonyYear, nom.category,
@@ -227,7 +227,7 @@ async function syncOscars(db, ceremonyYear, forceRefresh = false) {
           inserted++;
         } else {
           // Update won status (dataset gets updated after ceremony)
-          run(db,
+          await run(db,
             `UPDATE oscar_data SET won = ?, movie_id = COALESCE(?, movie_id)
              WHERE imdb_id = ? AND category = ? AND ceremony_year = ?`,
             [nom.won ? 1 : 0, movieId, imdbId, nom.category, ceremonyYear]
@@ -235,16 +235,16 @@ async function syncOscars(db, ceremonyYear, forceRefresh = false) {
         }
 
         // Re-score the movie if it's in our pool
-        if (movieId) scoring.scoreMovie(db, movieId);
+        if (movieId) await scoring.scoreMovie(db, movieId);
       }
     }
 
-    logSync(db, 'oscar_json', 'success', null, inserted);
-    save(db);
+    await logSync(db, 'oscar_json', 'success', null, inserted);
+    await save(db);
     console.log(`[sync:oscars] Done. ${inserted} new records inserted.`);
 
   } catch (err) {
-    logSync(db, 'oscar_json', 'error', err.message);
+    await logSync(db, 'oscar_json', 'error', err.message);
     console.error('[sync:oscars] Failed:', err.message);
     throw err;
   }
@@ -275,14 +275,14 @@ async function syncAwardScrapers(db, year, sources = null) {
 
     for (const award of awards) {
       // Match to movie — try exact title first, then case-insensitive
-      let movies = query(db,
+      let movies = await query(db,
         `SELECT id FROM movies WHERE LOWER(title) = LOWER(?) AND season_year = ?`,
         [award.title, year]
       );
 
       // Fuzzy fallback: title contains the award title or vice versa
       if (!movies.length) {
-        movies = query(db,
+        movies = await query(db,
           `SELECT id FROM movies
            WHERE season_year = ?
              AND (LOWER(title) LIKE LOWER(?) OR LOWER(?) LIKE LOWER('%' || title || '%'))`,
@@ -300,29 +300,29 @@ async function syncAwardScrapers(db, year, sources = null) {
       }
 
       // Check for duplicate
-      const existing = query(db,
+      const existing = await query(db,
         `SELECT id FROM critics_awards
          WHERE source = ? AND award_name = ? AND year = ? AND (movie_id = ? OR (movie_id IS NULL AND ? IS NULL))`,
         [award.source, award.award_name, award.year, movieId, movieId]
       );
 
       if (existing.length === 0) {
-        run(db,
+        await run(db,
           `INSERT INTO critics_awards (movie_id, source, award_name, year, won, points, source_url)
            VALUES (?, ?, ?, ?, 1, ?, ?)`,
           [movieId, award.source, award.award_name, award.year, award.points, award.source_url]
         );
 
-        if (movieId) scoring.scoreMovie(db, movieId);
+        if (movieId) await scoring.scoreMovie(db, movieId);
       }
     }
 
-    logSync(db, 'scrapers', 'success', null, matched);
-    save(db);
+    await logSync(db, 'scrapers', 'success', null, matched);
+    await save(db);
     console.log(`[sync:scrapers] Done. ${matched} matched, ${unmatched} unmatched.`);
 
   } catch (err) {
-    logSync(db, 'scrapers', 'error', err.message);
+    await logSync(db, 'scrapers', 'error', err.message);
     console.error('[sync:scrapers] Failed:', err.message);
     throw err;
   }
@@ -347,14 +347,14 @@ function startScheduler(year) {
   cron.schedule('0 2 * * 1', async () => {
     const db = await getDb();
     await syncTmdbPool(db, year);
-    save(db);
+    await save(db);
   });
 
   // OMDb: every Tuesday at 3:00am
   cron.schedule('0 3 * * 2', async () => {
     const db = await getDb();
     await syncOmdb(db, year);
-    save(db);
+    await save(db);
   });
 
   console.log('[scheduler] TMDB sync: Mondays 2am | OMDb sync: Tuesdays 3am');
@@ -387,7 +387,7 @@ if (require.main === module) {
     if (command === 'oscars'   || command === 'all') await syncOscars(db, year, true);
     if (command === 'scrapers' || command === 'all') await syncAwardScrapers(db, year);
 
-    save(db);
+    await save(db);
     console.log('\n[sync] All done.');
     process.exit(0);
   })().catch(err => {
