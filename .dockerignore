@@ -3,5 +3,5 @@ frontend/
 *.md
 nixpacks.toml
 vercel.json
-backend/node_modules/
-backend/.env
+node_modules/
+.env

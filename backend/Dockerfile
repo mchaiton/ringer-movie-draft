@@ -5,9 +5,12 @@ WORKDIR /app
 # Install libatomic1 required by @libsql/client native binaries
 RUN apt-get update && apt-get install -y libatomic1 && rm -rf /var/lib/apt/lists/*
 
-# Copy all backend files and install deps
-COPY backend/ /app/
-RUN npm install
+# Install dependencies
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy source
+COPY . .
 
 ENV NODE_ENV=production
 EXPOSE 3001
