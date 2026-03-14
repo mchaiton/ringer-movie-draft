@@ -49,6 +49,7 @@ const io     = new Server(server, {
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
+app.set('trust proxy', 1); // required when running behind Railway / Vercel proxies
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
