@@ -125,7 +125,9 @@ async function getEffectiveMaxBid(db, playerId) {
   `, [playerId]);
 
   if (!players.length) return 0;
-  const { budget_remaining, movies_owned, min_roster } = players[0];
+  const budget_remaining = Number(players[0].budget_remaining);
+  const movies_owned     = Number(players[0].movies_owned);
+  const min_roster       = Number(players[0].min_roster);
   const slotsRemaining = Math.max(0, min_roster - movies_owned);
   return Math.max(0, budget_remaining - slotsRemaining);
 }

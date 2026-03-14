@@ -288,8 +288,11 @@ function DraftRoom({ leagueId, you }) {
             <div>
               <Label>CURRENT HIGH BID</Label>
               <div style={{ display:"flex", alignItems:"baseline", gap:8, marginTop:4 }}>
-                <span style={{ fontFamily:"var(--font-display)", fontSize:48, fontWeight:900, color:"var(--amber-bright)", lineHeight:1 }}>${topBid?.amount??1}</span>
-                <span style={{ fontFamily:"var(--font-body)", fontSize:16, color:"var(--light)", fontStyle:"italic" }}>{topBid?.playerName}</span>
+                {topBid
+                  ? <><span style={{ fontFamily:"var(--font-display)", fontSize:48, fontWeight:900, color:"var(--amber-bright)", lineHeight:1 }}>${topBid.amount}</span>
+                       <span style={{ fontFamily:"var(--font-body)", fontSize:16, color:"var(--light)", fontStyle:"italic" }}>{topBid.playerName}</span></>
+                  : <span style={{ fontFamily:"var(--font-display)", fontSize:32, fontWeight:700, color:"var(--mid-grey)", lineHeight:1 }}>NO BIDS YET</span>
+                }
               </div>
             </div>
             <div style={{ textAlign:"center" }}>
@@ -307,7 +310,7 @@ function DraftRoom({ leagueId, you }) {
                 style={{ width:"100%", height:52, background:"var(--near-black)", border:"1px solid var(--mid-grey)", borderRadius:2, color:"var(--white)", fontFamily:"var(--font-mono)", fontSize:20, fontWeight:700, padding:"0 16px 0 32px", outline:"none" }} />
             </div>
             <button onClick={handleBid} style={{ background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, letterSpacing:"0.12em", padding:"0 28px", height:52 }}>PLACE BID</button>
-            {[(topBid?.amount??0)+25,(topBid?.amount??0)+50,(topBid?.amount??0)+100].map(amt=>amt<=myMaxBid&&<button key={amt} onClick={()=>setBidInput(String(amt))} style={{ background:"var(--warm-grey)", color:"var(--light)", border:"none", borderRadius:2, fontFamily:"var(--font-mono)", fontSize:11, padding:"0 14px", height:52 }}>+{amt-(topBid?.amount??0)}</button>)}
+            {[(topBid?.amount??0)+25,(topBid?.amount??0)+50,(topBid?.amount??0)+100].map(amt=>amt<=myMaxBid&&<button key={amt} onClick={()=>{ actions.placeBid(amt); setBidInput(""); }} style={{ background:"var(--warm-grey)", color:"var(--light)", border:"none", borderRadius:2, fontFamily:"var(--font-mono)", fontSize:11, padding:"0 14px", height:52 }}>+{amt-(topBid?.amount??0)}</button>)}
             {you?.is_commissioner&&<button onClick={actions.pass} style={{ background:"transparent", color:"var(--muted)", border:"1px solid var(--warm-grey)", borderRadius:2, fontFamily:"var(--font-mono)", fontSize:10, padding:"0 14px", height:52 }}>PASS</button>}
           </div>
           <Mono size={10} color="var(--muted)" style={{marginTop:8}}>Your effective max: <span style={{color:"var(--light)"}}>${myMaxBid}</span><span style={{marginLeft:12,color:"var(--mid-grey)"}}>· ${myPlayer?.budget_remaining} remaining</span></Mono>
