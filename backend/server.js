@@ -27,7 +27,7 @@ const rateLimit  = require('express-rate-limit');
 const { getDb, save }          = require('./src/db/schema');
 const { applyLeagueSchema }    = require('./src/db/league');
 const { registerDraftHandlers } = require('./src/draft/room');
-const { startScheduler }       = require('./src/sync/index');
+const { startScheduler, syncTmdbPool, syncOmdb } = require('./src/sync/index');
 
 const leagueRoutes = require('./src/api/routes/leagues');
 const draftRoutes  = require('./src/api/routes/draft');
@@ -116,6 +116,18 @@ async function bootstrap() {
 ║  Season   : ${SEASON_YEAR}                          ║
 ╚══════════════════════════════════════════════╝
     `);
+
+    // Run initial data sync in the background so the server is immediately
+    // available. Uses the same in-memory DB instance as the running server.
+    (async () => {
+      try {
+        await syncTmdbPool(db, SEASON_YEAR);
+        await syncOmdb(db, SEASON_YEAR);
+        console.log('[server] Initial sync complete.');
+      } catch (err) {
+        console.error('[server] Initial sync failed (non-fatal):', err.message);
+      }
+    })();
   });
 }
 

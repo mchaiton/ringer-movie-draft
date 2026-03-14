@@ -6,7 +6,7 @@
     "buildCommand": ""
   },
   "deploy": {
-    "startCommand": "node backend/src/sync/index.js tmdb 2026 && node backend/src/sync/index.js omdb 2026 && node backend/server.js",
+    "startCommand": "node backend/server.js",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE"
   }
