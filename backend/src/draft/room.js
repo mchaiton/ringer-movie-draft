@@ -116,6 +116,9 @@ function registerDraftHandlers(io, db) {
       try {
         if (!currentPlayer?.is_commissioner) { socket.emit('draft:error', { message: 'Only the commissioner can start the draft.' }); return; }
         if (activeSessions.has(currentLeagueId)) { socket.emit('draft:error', { message: 'Draft already in progress.' }); return; }
+        // Validate session exists and belongs to this league (catches stale localStorage IDs)
+        const sessions = await query(db, `SELECT id FROM draft_sessions WHERE id = ? AND league_id = ?`, [sessionId, currentLeagueId]);
+        if (!sessions.length) { socket.emit('draft:error', { message: 'Session not found. Please create a new draft session.' }); return; }
         await run(db, `UPDATE leagues SET status = 'drafting' WHERE id = ?`, [currentLeagueId]);
         await run(db, `UPDATE draft_sessions SET status = 'active', started_at = datetime('now') WHERE id = ?`, [sessionId]);
         const state = await buildState(db, currentLeagueId, sessionId, 'nominating', null, [], [], [], 0);

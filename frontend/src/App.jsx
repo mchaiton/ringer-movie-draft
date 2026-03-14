@@ -389,6 +389,7 @@ function DraftRoom({ leagueId, you }) {
   const timerColor=secondsLeft>15?"var(--amber)":secondsLeft>5?"#c87010":"var(--red)";
   const minBid=(topBid?.amount??0)+1;
   useEffect(()=>{ if(phase==="bidding") setBidInput(""); },[phase]);
+  useEffect(()=>{ if(error?.startsWith("Session not found")){ localStorage.removeItem("rdr_session"); setSessionId(null); } },[error]);
 
   if(!sessionId) return (
     <div style={{ padding:"88px 24px 24px", maxWidth:600, margin:"0 auto", textAlign:"center" }}>
