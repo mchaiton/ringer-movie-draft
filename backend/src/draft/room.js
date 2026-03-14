@@ -201,7 +201,7 @@ function registerDraftHandlers(io, db) {
         restartBidTimer(io, db, currentLeagueId, session);
         io.to(currentLeagueId).emit('draft:state', session.state);
         console.log(`[draft] $${bidAmount} bid on "${session.state.currentMovie.title}" by ${currentPlayer.name}`);
-      } catch (err) { console.error('[draft] bid error:', err); }
+      } catch (err) { console.error('[draft] bid error:', err); socket.emit('draft:error', { message: 'Bid failed: ' + err.message }); }
     });
 
     // ── Pass ─────────────────────────────────────────────────────────────────

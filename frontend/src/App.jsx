@@ -380,13 +380,15 @@ function DraftRoom({ leagueId, you }) {
   useEffect(()=>{ if(showPool) loadPool(poolSearch); },[showPool,poolSearch,loadPool]);
 
   const handleCreateSession = async()=>{ setCreating(true); try{ const r=await draftApi.createSession(); localStorage.setItem('rdr_session',r.sessionId); setSessionId(r.sessionId); }catch(e){alert(e.message);}finally{setCreating(false);} };
-  const handleBid=()=>{ const amt=parseInt(bidInput); if(!amt)return; actions.placeBid(amt); setBidInput(""); };
+  const handleBid=()=>{ const minBid=(topBid?.amount??0)+1; const amt=parseInt(bidInput)||minBid; if(amt<1)return; actions.placeBid(amt); setBidInput(""); };
 
   const phase=draftState?.phase, currentMovie=draftState?.currentMovie, bids=draftState?.bids||[], topBid=draftState?.topBid;
   const players=draftState?.players||[], queue=draftState?.queue||[], recentSales=draftState?.recentSales||[];
   const nominationOrder=draftState?.nominationOrder||[], nominationTurn=draftState?.nominationTurn??0;
   const myPlayer=players.find(p=>p.id===you?.id), myMaxBid=myPlayer?.effective_max_bid??0;
   const timerColor=secondsLeft>15?"var(--amber)":secondsLeft>5?"#c87010":"var(--red)";
+  const minBid=(topBid?.amount??0)+1;
+  useEffect(()=>{ if(phase==="bidding") setBidInput(""); },[phase]);
 
   if(!sessionId) return (
     <div style={{ padding:"88px 24px 24px", maxWidth:600, margin:"0 auto", textAlign:"center" }}>
@@ -473,7 +475,7 @@ function DraftRoom({ leagueId, you }) {
           <div style={{ display:"flex", gap:10 }}>
             <div style={{ position:"relative", flex:1 }}>
               <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontFamily:"var(--font-mono)", fontSize:18, color:"var(--muted)", fontWeight:700 }}>$</span>
-              <input type="number" value={bidInput} onChange={e=>setBidInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleBid()} placeholder={(topBid?.amount??0)+1} min={(topBid?.amount??0)+1}
+              <input type="number" value={bidInput} onChange={e=>setBidInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleBid()} placeholder={minBid} min={minBid}
                 style={{ width:"100%", height:52, background:"var(--near-black)", border:"1px solid var(--mid-grey)", borderRadius:2, color:"var(--white)", fontFamily:"var(--font-mono)", fontSize:20, fontWeight:700, padding:"0 16px 0 32px", outline:"none" }} />
             </div>
             <button onClick={handleBid} style={{ background:"var(--amber)", color:"var(--black)", border:"none", borderRadius:2, fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, letterSpacing:"0.12em", padding:"0 28px", height:52 }}>PLACE BID</button>
